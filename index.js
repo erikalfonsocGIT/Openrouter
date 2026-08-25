@@ -5,43 +5,42 @@ const https = require('https');
 
 const app = express();
 
-// Agentes Keep-Alive optimizados para la red de ETECSA en Cuba
-const httpAgent = new http.Agent({ keepAlive: true, keepAliveMsecs: 10000 });
 const httpsAgent = new https.Agent({ keepAlive: true, keepAliveMsecs: 10000 });
 
 app.get('/', (req, res) => {
-    res.send('Servidor Adaptador OpenRouter (z-ai/glm-5.2:free) activo en Render');
+    res.send('Servidor Adaptador OpenRouter activo y listo');
 });
 
-// INTERCEPTOR INTELIGENTE Y CONEXIÓN ROBUSTA PARA OPENROUTER
 app.use('/', createProxyMiddleware({
     target: 'https://openrouter.ai/api/v1',
     changeOrigin: true,
     logLevel: 'debug',
     agent: httpsAgent,
-
-    // Amplía el timeout a 2 minutos para soportar latencias en Cuba
     proxyTimeout: 120000,
     timeout: 120000,
 
-    pathRewrite: (path, req) => {
-        return path;
+    // CORRECCIÓN DE RUTA: Elimina duplicaciones de /v1 si Chatbox las envía
+    pathRewrite: (path) => {
+        return path.replace(/^\/v1/, '');
     },
+
     onProxyReq: (proxyReq, req, res) => {
-        // Mantiene intacta la cabecera Authorization: Bearer <OPENROUTER_API_KEY> enviada desde Chatbox
+        // Asegura que el formato de las cabeceras sea correcto para OpenRouter
+        if (req.headers['authorization']) {
+            proxyReq.setHeader('Authorization', req.headers['authorization']);
+        }
     },
     onError: (err, req, res) => {
-        console.error('Error de red/timeout en el Proxy OpenRouter:', err.message);
+        console.error('Error en el Proxy:', err.message);
         if (!res.headersSent) {
-            res.status(504).send('Error de tiempo de espera en la red. Conexión inestable.');
+            res.status(504).send('Error de conexión o timeout.');
         }
     }
 }));
 
 const PORT = process.env.PORT || 3000;
-const server = app.listen(PORT, () => console.log(`Adaptador OpenRouter corriendo en el puerto ${PORT}`));
+const server = app.listen(PORT, () => console.log(`Proxy corriendo en puerto ${PORT}`));
 
-// CONFIGURACIÓN DE TIMEOUTS PARA RENDER Y ETECSA
-server.timeout = 180000;         // 3 minutos
-server.keepAliveTimeout = 65000;   // Por encima del límite de 60s de Render
+server.timeout = 180000;
+server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
